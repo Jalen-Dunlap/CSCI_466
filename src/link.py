@@ -6,6 +6,7 @@ Created on Oct 12, 2016
 
 import queue
 import threading
+import time
 
 ## An abstraction of a link between router interfaces
 class Link:
@@ -31,13 +32,25 @@ class Link:
         for (node_a, node_a_intf, node_b, node_b_intf) in [(self.node_1, self.node_1_intf, self.node_2, self.node_2_intf), (self.node_2, self.node_2_intf, self.node_1, self.node_1_intf)]: 
             intf_a = node_a.intf_L[node_a_intf]
             intf_b = node_b.intf_L[node_b_intf]
-            pkt_S = intf_a.get('out')
-            if pkt_S is None:
+            if intf_a.out_queue.empty():
                 continue #continue if no packet to transfer
-            #otherwise transmit the packet
+            #otherwise try transmitting the packet
             try:
-                intf_b.put(pkt_S, 'in')
-                print('%s: transmitting packet "%s" on %s %s -> %s, %s' % (self, pkt_S, node_a, node_a_intf, node_b, node_b_intf))
+                #check if the interface is free to transmit a packet
+                if intf_a.next_avail_time <= time.time():
+                    #transmit the packet
+                    pkt_S = intf_a.get('out')
+                    intf_b.put(pkt_S, 'in')
+                    #update the next free time of the inteface according to serialization delay
+                    pkt_size = len(pkt_S)*8 #assuming each characted is 8 bits
+                    intf_a.next_avail_time = time.time() + pkt_size/intf_a.capacity                
+                    print('%s: transmitting packet "%s" on %s %s -> %s, %s \n' \
+                          ' - seconds until the next available time %f\n' \
+                          ' - queue size %d\n' \
+                          % (self, pkt_S, node_a, node_a_intf, node_b, node_b_intf, intf_a.next_avail_time - time.time(), intf_a.out_queue.qsize()))
+                # uncomment the lines below to see waiting time until next transmission
+#                 else:
+#                     print('%s: waiting to transmit packet on %s %s -> %s, %s for another %f milliseconds' % (self, node_a, node_a_intf, node_b, node_b_intf, intf_a.next_avail_time - time.time()))    
             except queue.Full:
                 print('%s: packet lost' % (self))
                 pass

@@ -11,10 +11,13 @@ import threading
 class Interface:
     ## @param maxsize - the maximum size of the queue storing packets
     #  @param cost - of the interface used in routing
-    def __init__(self, cost=0, maxsize=0):
+    #  @param capacity - the capacity of the link in bps
+    def __init__(self, cost=0, maxsize=0, capacity=500):
         self.in_queue = queue.Queue(maxsize);
         self.out_queue = queue.Queue(maxsize);
         self.cost = cost
+        self.capacity = capacity #serialization rate
+        self.next_avail_time = 0 #the next time the interface can transmit a packet
     
     ##get packet from the queue interface
     # @param in_or_out - use 'in' or 'out' interface
@@ -113,7 +116,8 @@ class Host:
     ## create a packet and enqueue for transmission
     # @param dst_addr: destination address for the packet
     # @param data_S: data being transmitted to the network layer
-    def udt_send(self, dst_addr, data_S):
+    # @param priority: packet priority
+    def udt_send(self, dst_addr, data_S, priority=0):
         p = NetworkPacket(dst_addr, 'data', data_S)
         print('%s: sending packet "%s"' % (self, p))
         self.intf_L[0].put(p.to_byte_S(), 'out') #send packets always enqueued successfully
@@ -141,17 +145,19 @@ class Host:
 class Router:
     
     ##@param name: friendly router name for debugging
-    # @param intf_cost_L: outgoing cost of interfaces (and interface number) 
+    # @param intf_cost_L: outgoing cost of interfaces (and interface number)
+    # @param intf_capacity_L: capacities of outgoing interfaces in bps 
     # @param rt_tbl_D: routing table dictionary (starting reachability), eg. {1: {1: 1}} # packet to host 1 through interface 1 for cost 1
     # @param max_queue_size: max queue length (passed to Interface)
-    def __init__(self, name, intf_cost_L, rt_tbl_D, max_queue_size):
+    def __init__(self, name, intf_cost_L, intf_capacity_L, rt_tbl_D, max_queue_size):
         self.stop = False #for thread termination
         self.name = name
         #create a list of interfaces
         #note the number of interfaces is set up by out_intf_cost_L
+        assert(len(intf_cost_L) == len(intf_capacity_L))
         self.intf_L = []
-        for cost in intf_cost_L:
-            self.intf_L.append(Interface(cost, max_queue_size))
+        for i in range(len(intf_cost_L)):
+            self.intf_L.append(Interface(intf_cost_L[i], max_queue_size, intf_capacity_L[i]))
         #set up the routing table for connected hosts
         self.rt_tbl_D = rt_tbl_D 
 
